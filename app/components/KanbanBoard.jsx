@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import TaskCard from "./TaskCard";
 
 const COLUMNS = [
@@ -23,39 +23,99 @@ const COLUMNS = [
   },
 ];
 
-export default function KanbanBoard({ tasks, onUpdateTask, onDeleteTask, onEditTask }) {
+export default function KanbanBoard({ tasks, onUpdateTask, onDeleteTask, onEditTask, onReorder, currentPeriod }) {
   const [dragOverColumn, setDragOverColumn] = useState(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState(null);
+  const dragSourceRef = useRef(null);
+  const dropIndexRef = useRef(null);
+
+  function handleDragStart(taskId, status) {
+    dragSourceRef.current = { taskId, status };
+  }
 
   function handleDragOver(e, columnId) {
     e.preventDefault();
     setDragOverColumn(columnId);
   }
 
-  function handleDragLeave() {
-    setDragOverColumn(null);
+  function handleDragLeave(e, columnId) {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      if (dragOverColumn === columnId) {
+        setDragOverColumn(null);
+        setDropTargetIndex(null);
+        dropIndexRef.current = null;
+      }
+    }
   }
 
-  function handleDrop(e, columnId) {
+  const handleTaskDragOver = useCallback((e, index) => {
     e.preventDefault();
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const insertIndex = e.clientY < midY ? index : index + 1;
+    dropIndexRef.current = insertIndex;
+    setDropTargetIndex(insertIndex);
+  }, []);
+
+  function handleDrop(e, columnId, columnTasks) {
+    e.preventDefault();
+
+    const source = dragSourceRef.current;
+    const targetIndex = dropIndexRef.current;
+
+    // Reset all state
     setDragOverColumn(null);
-    const taskId = e.dataTransfer.getData("taskId");
-    if (taskId) {
+    setDropTargetIndex(null);
+    dragSourceRef.current = null;
+    dropIndexRef.current = null;
+
+    if (!source) return;
+
+    const { taskId, status: sourceStatus } = source;
+
+    if (sourceStatus === columnId && targetIndex !== null) {
+      // Reorder within same column
+      const orderedIds = columnTasks.map((t) => t._id);
+      const fromIndex = orderedIds.indexOf(taskId);
+      if (fromIndex === -1) return;
+      if (fromIndex === targetIndex || fromIndex === targetIndex - 1) return; // no change
+
+      orderedIds.splice(fromIndex, 1);
+      const insertAt = targetIndex > fromIndex ? targetIndex - 1 : targetIndex;
+      orderedIds.splice(insertAt, 0, taskId);
+
+      if (onReorder) {
+        onReorder(orderedIds, columnId, currentPeriod);
+      }
+    } else if (sourceStatus !== columnId) {
+      // Move to different column
       onUpdateTask(taskId, { status: columnId });
     }
   }
 
+  function handleDragEnd() {
+    dragSourceRef.current = null;
+    dropIndexRef.current = null;
+    setDragOverColumn(null);
+    setDropTargetIndex(null);
+  }
+
   return (
-    <div className="grid grid-cols-1 gap-7for  sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3">
       {COLUMNS.map((column) => {
-        const columnTasks = tasks.filter((t) => t.status === column.id);
+        const columnTasks = tasks
+          .filter((t) => t.status === column.id)
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         const isOver = dragOverColumn === column.id;
+        const isSameColumn = dragSourceRef.current?.status === column.id;
 
         return (
           <div
             key={column.id}
             onDragOver={(e) => handleDragOver(e, column.id)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, column.id)}
+            onDragLeave={(e) => handleDragLeave(e, column.id)}
+            onDrop={(e) => handleDrop(e, column.id, columnTasks)}
             className={`flex flex-col rounded-2xl border p-3 min-h-[500px] transition-colors ${
               isOver
                 ? "border-indigo-400 bg-indigo-50/50 dark:border-indigo-500/50 dark:bg-indigo-950/20"
@@ -94,14 +154,33 @@ export default function KanbanBoard({ tasks, onUpdateTask, onDeleteTask, onEditT
                   </p>
                 </div>
               ) : (
-                columnTasks.map((task) => (
-                  <TaskCard
+                columnTasks.map((task, index) => (
+                  <div
                     key={task._id}
-                    task={task}
-                    onDelete={onDeleteTask}
-                    onEdit={onEditTask}
-                    onUpdate={onUpdateTask}
-                  />
+                    onDragOver={(e) => handleTaskDragOver(e, index)}
+                    className="relative"
+                  >
+                    {/* Drop indicator line - before this task */}
+                    {isOver && isSameColumn && dropTargetIndex === index && (
+                      <div className="absolute -top-1.5 left-2 right-2 h-0.5 rounded-full bg-indigo-500 z-10">
+                        <div className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-indigo-500" />
+                      </div>
+                    )}
+                    <TaskCard
+                      task={task}
+                      onDelete={onDeleteTask}
+                      onEdit={onEditTask}
+                      onUpdate={onUpdateTask}
+                      onDragStart={() => handleDragStart(task._id, column.id)}
+                      onDragEnd={handleDragEnd}
+                    />
+                    {/* Drop indicator line - after last task */}
+                    {isOver && isSameColumn && dropTargetIndex === index + 1 && index === columnTasks.length - 1 && (
+                      <div className="absolute -bottom-1.5 left-2 right-2 h-0.5 rounded-full bg-indigo-500 z-10">
+                        <div className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-indigo-500" />
+                      </div>
+                    )}
+                  </div>
                 ))
               )}
             </div>

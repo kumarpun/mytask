@@ -9,7 +9,7 @@ export async function GET(request) {
   const period = searchParams.get("period");
 
   const filter = period ? { period } : {};
-  const tasks = await Task.find(filter).sort({ createdAt: -1 });
+  const tasks = await Task.find(filter).sort({ order: 1, createdAt: -1 });
 
   return NextResponse.json(tasks);
 }

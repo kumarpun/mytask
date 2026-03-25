@@ -46,7 +46,7 @@ function getFormattedDate() {
 
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
-  const { tasks, isLoaded, addTask, updateTask, deleteTask, resetDoneTasks } = useTasks();
+  const { tasks, isLoaded, addTask, updateTask, deleteTask, resetDoneTasks, reorderTasks } = useTasks();
   const { streak, refreshStreak } = useStreak();
   const [activeTab, setActiveTab] = useState("day");
   const [showAchievement, setShowAchievement] = useState(false);
@@ -367,6 +367,8 @@ export default function Home() {
               onUpdateTask={handleUpdateTask}
               onDeleteTask={handleDeleteTask}
               onEditTask={handleEditTask}
+              onReorder={(orderedIds) => reorderTasks(orderedIds)}
+              currentPeriod={activeTab}
             />
 
             {/* Empty state */}

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Routine - Daily Productivity Planner",
+  title: "Mytask - Daily Productivity Planner",
   description: "Kanban board to plan and track your day, week, and month goals",
 };
 

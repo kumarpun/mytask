@@ -33,7 +33,7 @@ function formatDate(dateStr) {
   });
 }
 
-export default function TaskCard({ task, onDelete, onEdit, onUpdate }) {
+export default function TaskCard({ task, onDelete, onEdit, onUpdate, onDragStart: onDragStartProp, onDragEnd: onDragEndProp }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
@@ -42,10 +42,12 @@ export default function TaskCard({ task, onDelete, onEdit, onUpdate }) {
   function handleDragStart(e) {
     e.dataTransfer.setData("taskId", task._id);
     e.target.style.opacity = "0.5";
+    if (onDragStartProp) onDragStartProp();
   }
 
   function handleDragEnd(e) {
     e.target.style.opacity = "1";
+    if (onDragEndProp) onDragEndProp();
   }
 
   const statusInfo = statusLabels[task.status] || statusLabels.todo;

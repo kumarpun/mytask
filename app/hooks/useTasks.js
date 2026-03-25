@@ -116,5 +116,26 @@ export function useTasks() {
     }
   }
 
-  return { tasks, isLoaded, addTask, updateTask, deleteTask, resetDoneTasks };
+  async function reorderTasks(orderedIds) {
+    // Optimistic: update order in local state
+    setTasks((prev) => {
+      const orderMap = {};
+      orderedIds.forEach((id, i) => { orderMap[id] = i; });
+      return prev.map((t) =>
+        orderMap[t._id] !== undefined ? { ...t, order: orderMap[t._id] } : t
+      );
+    });
+
+    try {
+      await fetch("/api/tasks/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds }),
+      });
+    } catch {
+      await fetchTasks();
+    }
+  }
+
+  return { tasks, isLoaded, addTask, updateTask, deleteTask, resetDoneTasks, reorderTasks };
 }
