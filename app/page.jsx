@@ -1,5 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { useTasks } from "./hooks/useTasks";
 import { useTheme } from "./components/ThemeProvider";
 import KanbanBoard from "./components/KanbanBoard";
@@ -243,6 +244,21 @@ export default function Home() {
                   <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                 </svg>
               </button>
+
+              {/* Notes */}
+              <Link
+                href="/notes"
+                className="flex h-9 sm:h-10 w-9 sm:w-10 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 transition-colors"
+                title="Notes"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+              </Link>
 
               {/* Theme toggle */}
               <button
