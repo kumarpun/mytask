@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, memo } from "react";
 
 const priorityColors = {
   low: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
@@ -33,7 +33,7 @@ function formatDate(dateStr) {
   });
 }
 
-export default function TaskCard({ task, onDelete, onEdit, onUpdate, onDragStart: onDragStartProp, onDragEnd: onDragEndProp }) {
+const TaskCard = memo(function TaskCard({ task, onDelete, onEdit, onUpdate, onDragStart: onDragStartProp, onDragEnd: onDragEndProp }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
@@ -312,4 +312,6 @@ export default function TaskCard({ task, onDelete, onEdit, onUpdate, onDragStart
       )}
     </>
   );
-}
+});
+
+export default TaskCard;

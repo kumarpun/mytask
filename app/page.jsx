@@ -1,20 +1,23 @@
 "use client";
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useTasks } from "./hooks/useTasks";
 import { useTheme } from "./components/ThemeProvider";
 import KanbanBoard from "./components/KanbanBoard";
 import BacklogView from "./components/BacklogView";
 import CompletedView from "./components/CompletedView";
-import TaskModal from "./components/TaskModal";
-import SettingsModal from "./components/SettingsModal";
 import QuoteCard from "./components/QuoteCard";
 import StreakBadge from "./components/StreakBadge";
 import { useStreak } from "./hooks/useStreak";
-import AchievementToast from "./components/AchievementToast";
 import Toast from "./components/Toast";
-import SearchModal from "./components/SearchModal";
-import TaskDetailModal from "./components/TaskDetailModal";
+
+// Lazy-load modals — not needed until user interaction
+const TaskModal = lazy(() => import("./components/TaskModal"));
+const SettingsModal = lazy(() => import("./components/SettingsModal"));
+const SearchModal = lazy(() => import("./components/SearchModal"));
+const TaskDetailModal = lazy(() => import("./components/TaskDetailModal"));
+const AchievementToast = lazy(() => import("./components/AchievementToast"));
 
 const TABS = [
   { id: "day", label: "Today", icon: "☀️" },
@@ -120,7 +123,7 @@ export default function Home() {
     return { total, done, inProgress, percentage };
   }, [boardTasks]);
 
-  async function handleSaveTask(taskData) {
+  const handleSaveTask = useCallback(async (taskData) => {
     if (editingTask) {
       await updateTask(editingTask._id, taskData);
     } else {
@@ -128,18 +131,18 @@ export default function Home() {
     }
     setEditingTask(null);
     refreshStreak();
-  }
+  }, [editingTask, updateTask, addTask, refreshStreak]);
 
-  async function handleMoveToTodo(taskId) {
+  const handleMoveToTodo = useCallback(async (taskId) => {
     await updateTask(taskId, { status: "todo" });
     setToast(statusToasts.todo);
     refreshStreak();
-  }
+  }, [updateTask, refreshStreak]);
 
-  async function handleUpdateTask(taskId, updates) {
+  const handleUpdateTask = useCallback(async (taskId, updates) => {
     if (updates.status) {
       const task = tasks.find((t) => t._id === taskId);
-      if (task && task.status === updates.status) return; // same status, skip
+      if (task && task.status === updates.status) return;
     }
     await updateTask(taskId, updates);
     if (updates.status) {
@@ -147,18 +150,18 @@ export default function Home() {
       if (t) setToast(t);
       refreshStreak();
     }
-  }
+  }, [tasks, updateTask, refreshStreak]);
 
-  async function handleDeleteTask(taskId) {
+  const handleDeleteTask = useCallback(async (taskId) => {
     await deleteTask(taskId);
     setToast({ message: "Task deleted", icon: "🗑️" });
     refreshStreak();
-  }
+  }, [deleteTask, refreshStreak]);
 
-  function handleEditTask(task) {
+  const handleEditTask = useCallback((task) => {
     setEditingTask(task);
     setIsModalOpen(true);
-  }
+  }, []);
 
   if (!isLoaded) {
     return (
@@ -179,11 +182,15 @@ export default function Home() {
       />
 
       {/* Achievement Toast */}
-      <AchievementToast
-        show={showAchievement}
-        streak={streak.currentStreak}
-        onClose={dismissAchievement}
-      />
+      {showAchievement && (
+        <Suspense fallback={null}>
+          <AchievementToast
+            show={showAchievement}
+            streak={streak.currentStreak}
+            onClose={dismissAchievement}
+          />
+        </Suspense>
+      )}
 
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/80 sticky top-0 z-40">
@@ -383,7 +390,7 @@ export default function Home() {
               onUpdateTask={handleUpdateTask}
               onDeleteTask={handleDeleteTask}
               onEditTask={handleEditTask}
-              onReorder={(orderedIds) => reorderTasks(orderedIds)}
+              onReorder={reorderTasks}
               currentPeriod={activeTab}
             />
 
@@ -409,40 +416,45 @@ export default function Home() {
         )}
       </main>
 
-      {/* Task Modal */}
-      <TaskModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingTask(null);
-        }}
-        onSave={handleSaveTask}
-        editingTask={editingTask}
-        currentPeriod={isSpecialTab ? "day" : activeTab}
-      />
+      {/* Lazy-loaded modals */}
+      <Suspense fallback={null}>
+        {isModalOpen && (
+          <TaskModal
+            isOpen={isModalOpen}
+            onClose={() => {
+              setIsModalOpen(false);
+              setEditingTask(null);
+            }}
+            onSave={handleSaveTask}
+            editingTask={editingTask}
+            currentPeriod={isSpecialTab ? "day" : activeTab}
+          />
+        )}
 
-      {/* Search Modal */}
-      <SearchModal
-        isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-        tasks={tasks}
-        onView={setViewingTask}
-      />
+        {isSearchOpen && (
+          <SearchModal
+            isOpen={isSearchOpen}
+            onClose={() => setIsSearchOpen(false)}
+            tasks={tasks}
+            onView={setViewingTask}
+          />
+        )}
 
-      {/* Task Detail Modal (from search) */}
-      {viewingTask && (
-        <TaskDetailModal
-          task={tasks.find((t) => t._id === viewingTask._id) || viewingTask}
-          onClose={() => setViewingTask(null)}
-          onUpdate={handleUpdateTask}
-        />
-      )}
+        {viewingTask && (
+          <TaskDetailModal
+            task={tasks.find((t) => t._id === viewingTask._id) || viewingTask}
+            onClose={() => setViewingTask(null)}
+            onUpdate={handleUpdateTask}
+          />
+        )}
 
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
+        {isSettingsOpen && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

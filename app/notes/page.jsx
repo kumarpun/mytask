@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import { useTheme } from "../components/ThemeProvider";
 import Link from "next/link";
 
@@ -27,11 +27,11 @@ export default function NotesPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [search, setSearch] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const saveTimerRef = useRef(null);
+  const saveTimersRef = useRef({});
   const titleRef = useRef(null);
   const contentRef = useRef(null);
 
-  const activeNote = notes.find((n) => n._id === activeId);
+  const activeNote = useMemo(() => notes.find((n) => n._id === activeId), [notes, activeId]);
 
   // Fetch notes
   const fetchNotes = useCallback(async () => {
@@ -52,22 +52,25 @@ export default function NotesPage() {
 
   useEffect(() => {
     fetchNotes().then((data) => {
-      if (data && data.length > 0 && !activeId) {
-        setActiveId(data[0]._id);
+      if (data && data.length > 0) {
+        setActiveId((prev) => prev ?? data[0]._id);
       }
     });
-  }, [fetchNotes, activeId]);
+  }, [fetchNotes]);
 
-  // Auto-save with debounce
+  // Auto-save with per-field debounce so title and content don't cancel each other
   const saveNote = useCallback(
-    async (id, updates) => {
+    (id, updates) => {
       // Optimistic update
       setNotes((prev) =>
         prev.map((n) => (n._id === id ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n))
       );
 
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(async () => {
+      const field = Object.keys(updates)[0];
+      const timerKey = `${id}-${field}`;
+      if (saveTimersRef.current[timerKey]) clearTimeout(saveTimersRef.current[timerKey]);
+      saveTimersRef.current[timerKey] = setTimeout(async () => {
+        delete saveTimersRef.current[timerKey];
         try {
           await fetch(`/api/notes/${id}`, {
             method: "PATCH",
@@ -116,38 +119,54 @@ export default function NotesPage() {
   }
 
   // Pin/unpin note
-  async function togglePin(id) {
-    const note = notes.find((n) => n._id === id);
-    if (!note) return;
-    const pinned = !note.pinned;
-    setNotes((prev) =>
-      prev.map((n) => (n._id === id ? { ...n, pinned } : n))
-    );
+  const togglePin = useCallback(async (id) => {
+    setNotes((prev) => {
+      const note = prev.find((n) => n._id === id);
+      if (!note) return prev;
+      return prev.map((n) => (n._id === id ? { ...n, pinned: !n.pinned } : n));
+    });
     try {
+      // Read current pinned state from the optimistically updated state
+      const note = notes.find((n) => n._id === id);
       await fetch(`/api/notes/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pinned }),
+        body: JSON.stringify({ pinned: note ? !note.pinned : true }),
       });
     } catch (err) {
       console.error("Failed to toggle pin:", err);
     }
-  }
+  }, [notes]);
 
-  // Filter notes
-  const filteredNotes = notes
-    .filter((n) => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q);
-    })
-    .sort((a, b) => {
-      if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
-      return new Date(b.updatedAt) - new Date(a.updatedAt);
-    });
+  const handleSelectNote = useCallback((id) => {
+    setActiveId(id);
+    setSidebarOpen(false);
+  }, []);
 
-  const pinnedNotes = filteredNotes.filter((n) => n.pinned);
-  const unpinnedNotes = filteredNotes.filter((n) => !n.pinned);
+  const handleDeleteConfirm = useCallback((id) => {
+    setDeleteConfirm(id);
+  }, []);
+
+  // Filter and sort notes — memoized to avoid recalculating on unrelated re-renders
+  const { pinnedNotes, unpinnedNotes, filteredNotes } = useMemo(() => {
+    const q = search.toLowerCase();
+    const filtered = notes
+      .filter((n) => {
+        if (!search) return true;
+        return n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q);
+      })
+      .sort((a, b) => {
+        if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
+        return new Date(b.updatedAt) - new Date(a.updatedAt);
+      });
+
+    const pinned = [];
+    const unpinned = [];
+    for (const n of filtered) {
+      (n.pinned ? pinned : unpinned).push(n);
+    }
+    return { pinnedNotes: pinned, unpinnedNotes: unpinned, filteredNotes: filtered };
+  }, [notes, search]);
 
   if (!isLoaded) {
     return (
@@ -312,12 +331,9 @@ export default function NotesPage() {
                         key={note._id}
                         note={note}
                         isActive={activeId === note._id}
-                        onClick={() => {
-                          setActiveId(note._id);
-                          setSidebarOpen(false);
-                        }}
-                        onPin={() => togglePin(note._id)}
-                        onDelete={() => setDeleteConfirm(note._id)}
+                        onSelect={handleSelectNote}
+                        onPin={togglePin}
+                        onDeleteConfirm={handleDeleteConfirm}
                       />
                     ))}
                   </div>
@@ -337,12 +353,9 @@ export default function NotesPage() {
                         key={note._id}
                         note={note}
                         isActive={activeId === note._id}
-                        onClick={() => {
-                          setActiveId(note._id);
-                          setSidebarOpen(false);
-                        }}
-                        onPin={() => togglePin(note._id)}
-                        onDelete={() => setDeleteConfirm(note._id)}
+                        onSelect={handleSelectNote}
+                        onPin={togglePin}
+                        onDeleteConfirm={handleDeleteConfirm}
                       />
                     ))}
                   </div>
@@ -452,13 +465,13 @@ export default function NotesPage() {
   );
 }
 
-// Sidebar note list item
-function NoteListItem({ note, isActive, onClick, onPin, onDelete }) {
+// Sidebar note list item — memoized to prevent re-render when typing in editor
+const NoteListItem = memo(function NoteListItem({ note, isActive, onSelect, onPin, onDeleteConfirm }) {
   const [showActions, setShowActions] = useState(false);
 
   return (
     <div
-      onClick={onClick}
+      onClick={() => onSelect(note._id)}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
       className={`group relative cursor-pointer px-4 py-3 transition-colors ${
@@ -485,7 +498,7 @@ function NoteListItem({ note, isActive, onClick, onPin, onDelete }) {
         {showActions && (
           <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={onPin}
+              onClick={() => onPin(note._id)}
               className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
                 note.pinned
                   ? "text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/30"
@@ -501,7 +514,7 @@ function NoteListItem({ note, isActive, onClick, onPin, onDelete }) {
               </svg>
             </button>
             <button
-              onClick={onDelete}
+              onClick={() => onDeleteConfirm(note._id)}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
               title="Delete"
             >
@@ -515,4 +528,4 @@ function NoteListItem({ note, isActive, onClick, onPin, onDelete }) {
       </div>
     </div>
   );
-}
+});
